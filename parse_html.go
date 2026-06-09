@@ -52,7 +52,7 @@ func getLinksFromHTML(rawHTML string, baseURL *url.URL) ([]string, error) {
 		href := s.AttrOr("href", "")
 
 		if strings.HasPrefix(href, "/") {
-			href = fmt.Sprintf("%s%s", baseURL, href)
+			href = fmt.Sprintf("%s://%s%s", baseURL.Scheme, baseURL.Hostname(), href)
 		}
 
 		if href != "" {
@@ -87,14 +87,14 @@ func getLinksFromImages(rawHTML string, baseURL *url.URL) ([]string, error) {
 }
 
 type PageData struct {
-	URL            string
-	Heading        string
-	FirstParagraph string
-	OutgoingLinks  []string
-	ImageURLs      []string
+	URL            string   `json:"url"`
+	Heading        string   `json:"heading"`
+	FirstParagraph string   `json:"first_paragraph"`
+	OutgoingLinks  []string `json:"outgoing_links"`
+	ImageURLs      []string `json:"image_urls"`
 }
 
-func extractPageData(rawHTML string, baseURL *url.URL) (PageData, []error) {
+func extractPageData(rawHTML string, currentURL string, baseURL *url.URL) (PageData, []error) {
 	errs := make([]error, 0)
 	hrefs, err := getLinksFromHTML(rawHTML, baseURL)
 
@@ -103,12 +103,13 @@ func extractPageData(rawHTML string, baseURL *url.URL) (PageData, []error) {
 	}
 
 	imageURLs, err := getLinksFromImages(rawHTML, baseURL)
+
 	if err != nil {
 		errs = append(errs, err)
 	}
 
 	return PageData{
-		URL:            baseURL.String(),
+		URL:            currentURL,
 		Heading:        getHeadingFromHTML(rawHTML),
 		FirstParagraph: getParagraphFromHTML(rawHTML),
 		OutgoingLinks:  hrefs,
