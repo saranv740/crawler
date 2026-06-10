@@ -5,7 +5,19 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/PuerkitoBio/goquery"
 )
+
+func htmlToGoQueryDoc(rawHTML string) (*goquery.Document, error) {
+	reader := strings.NewReader(rawHTML)
+	doc, err := goquery.NewDocumentFromReader(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
 
 func TestGetHeadingFromHTML(t *testing.T) {
 	t.Run("it extracts H1", func(t *testing.T) {
@@ -21,8 +33,12 @@ func TestGetHeadingFromHTML(t *testing.T) {
 </html>
 		`
 		expected := "Welcome to Boot.dev"
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
 
-		out := getHeadingFromHTML(input)
+		out := getHeadingFromHTML(doc)
 		if out != expected {
 			t.Fatalf("expected %q got %q", expected, out)
 		}
@@ -41,8 +57,12 @@ func TestGetHeadingFromHTML(t *testing.T) {
 </html>
 		`
 		expected := "H2 is awesome"
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
 
-		out := getHeadingFromHTML(input)
+		out := getHeadingFromHTML(doc)
 		if out != expected {
 			t.Fatalf("expected %q got %q", expected, out)
 		}
@@ -58,8 +78,12 @@ func TestGetHeadingFromHTML(t *testing.T) {
 </html>
 		`
 		expected := ""
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
 
-		out := getHeadingFromHTML(input)
+		out := getHeadingFromHTML(doc)
 		if out != expected {
 			t.Fatalf("expected %q got %q", expected, out)
 		}
@@ -79,7 +103,11 @@ func TestGetParagraphFromHTML(t *testing.T) {
 </html>
 		`
 		expected := "Learn to code by building real projects."
-		got := getParagraphFromHTML(input)
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
+		got := getParagraphFromHTML(doc)
 
 		if !strings.Contains(got, expected) {
 			t.Fatalf("expected %q got %q", expected, got)
@@ -97,7 +125,11 @@ func TestGetParagraphFromHTML(t *testing.T) {
 </html>
 		`
 		expected := "Learn to code by building real projects."
-		got := getParagraphFromHTML(input)
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
+		got := getParagraphFromHTML(doc)
 
 		if !strings.Contains(got, expected) {
 			t.Fatalf("expected %q got %q", expected, got)
@@ -126,7 +158,12 @@ func TestExtractLinksFromHTML(t *testing.T) {
 			"https://crawler-test.com/about",
 		}
 
-		got, err := getLinksFromHTML(input, baseURL)
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
+
+		got, err := getLinksFromHTML(doc, baseURL)
 		if err != nil {
 			t.Fatalf("unexpected error %v", err)
 		}
@@ -149,7 +186,12 @@ func TestExtractLinksFromHTML(t *testing.T) {
 			"https://crawler-test.com/logo.png",
 		}
 
-		got, err := getLinksFromImages(input, baseURL)
+		doc, err := htmlToGoQueryDoc(input)
+		if err != nil {
+			t.Fatalf("error in parsing html: %v", err)
+		}
+
+		got, err := getLinksFromImages(doc, baseURL)
 		if err != nil {
 			t.Fatalf("unexpected error %v", err)
 		}
@@ -175,18 +217,17 @@ func TestExtractPageData(t *testing.T) {
         <img src="/image1.jpg" alt="Image 1">
     </body>
 </html>`
-
-	got, errs := extractPageData(input, baseURL)
-	if len(errs) != 0 {
-		t.Fatalf("expected 0 errors got %d errors %v", len(errs), errs)
-	}
-
 	expected := PageData{
 		URL:            "https://crawler-test.com",
 		Heading:        "Test Title",
 		FirstParagraph: "This is the first paragraph.",
 		OutgoingLinks:  []string{"https://crawler-test.com/link1"},
 		ImageURLs:      []string{"https://crawler-test.com/image1.jpg"},
+	}
+
+	got, errs := extractPageData(input, "https://crawler-test.com", baseURL)
+	if len(errs) != 0 {
+		t.Fatalf("expected 0 errors got %d errors %v", len(errs), errs)
 	}
 
 	if !reflect.DeepEqual(got, expected) {

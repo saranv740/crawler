@@ -10,13 +10,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-func getHeadingFromHTML(rawHTML string) string {
-	reader := strings.NewReader(rawHTML)
-	doc, err := goquery.NewDocumentFromReader(reader)
-	if err != nil {
-		return ""
-	}
-
+func getHeadingFromHTML(doc *goquery.Document) string {
 	node := doc.Find("h1")
 	if node.Length() == 0 {
 		node = doc.Find("h2")
@@ -25,13 +19,7 @@ func getHeadingFromHTML(rawHTML string) string {
 	return node.Text()
 }
 
-func getParagraphFromHTML(rawHTML string) string {
-	reader := strings.NewReader(rawHTML)
-	doc, err := goquery.NewDocumentFromReader(reader)
-	if err != nil {
-		return ""
-	}
-
+func getParagraphFromHTML(doc *goquery.Document) string {
 	node := doc.Find("main")
 	if node.Length() == 0 {
 		node = doc.Find("p")
@@ -40,19 +28,13 @@ func getParagraphFromHTML(rawHTML string) string {
 	return node.Text()
 }
 
-func getLinksFromHTML(rawHTML string, baseURL *url.URL) ([]string, error) {
-	reader := strings.NewReader(rawHTML)
-	doc, err := goquery.NewDocumentFromReader(reader)
-	if err != nil {
-		return []string{}, err
-	}
-
+func getLinksFromHTML(doc *goquery.Document, baseURL *url.URL) ([]string, error) {
 	result := make([]string, 0)
 	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
 		href := s.AttrOr("href", "")
 
 		if strings.HasPrefix(href, "/") {
-			href = fmt.Sprintf("%s%s", baseURL, href)
+			href = fmt.Sprintf("%s://%s%s", baseURL.Scheme, baseURL.Hostname(), href)
 		}
 
 		if href != "" {
@@ -63,13 +45,7 @@ func getLinksFromHTML(rawHTML string, baseURL *url.URL) ([]string, error) {
 	return result, nil
 }
 
-func getLinksFromImages(rawHTML string, baseURL *url.URL) ([]string, error) {
-	reader := strings.NewReader(rawHTML)
-	doc, err := goquery.NewDocumentFromReader(reader)
-	if err != nil {
-		return []string{}, err
-	}
-
+func getLinksFromImages(doc *goquery.Document, baseURL *url.URL) ([]string, error) {
 	result := make([]string, 0)
 	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
 		src := s.AttrOr("src", "")
@@ -87,30 +63,37 @@ func getLinksFromImages(rawHTML string, baseURL *url.URL) ([]string, error) {
 }
 
 type PageData struct {
-	URL            string
-	Heading        string
-	FirstParagraph string
-	OutgoingLinks  []string
-	ImageURLs      []string
+	URL            string   `json:"url"`
+	Heading        string   `json:"heading"`
+	FirstParagraph string   `json:"first_paragraph"`
+	OutgoingLinks  []string `json:"outgoing_links"`
+	ImageURLs      []string `json:"image_urls"`
 }
 
-func extractPageData(rawHTML string, baseURL *url.URL) (PageData, []error) {
+func extractPageData(rawHTML string, currentURL string, baseURL *url.URL) (PageData, []error) {
+	reader := strings.NewReader(rawHTML)
+	doc, err := goquery.NewDocumentFromReader(reader)
+	if err != nil {
+		return PageData{}, []error{err}
+	}
+
 	errs := make([]error, 0)
-	hrefs, err := getLinksFromHTML(rawHTML, baseURL)
+	hrefs, err := getLinksFromHTML(doc, baseURL)
 
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	imageURLs, err := getLinksFromImages(rawHTML, baseURL)
+	imageURLs, err := getLinksFromImages(doc, baseURL)
+
 	if err != nil {
 		errs = append(errs, err)
 	}
 
 	return PageData{
-		URL:            baseURL.String(),
-		Heading:        getHeadingFromHTML(rawHTML),
-		FirstParagraph: getParagraphFromHTML(rawHTML),
+		URL:            currentURL,
+		Heading:        getHeadingFromHTML(doc),
+		FirstParagraph: getParagraphFromHTML(doc),
 		OutgoingLinks:  hrefs,
 		ImageURLs:      imageURLs,
 	}, errs
