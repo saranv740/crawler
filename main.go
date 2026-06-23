@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -20,18 +19,8 @@ func start(rawURL string, maxConcurrency int, maxPages int) (map[string]PageData
 		return pages, fmt.Errorf("error in parsing URL")
 	}
 
-	crawlr := config{
-		baseURL:  baseURL,
-		pages:    pages,
-		mu:       &sync.Mutex{},
-		sema:     make(chan struct{}, maxConcurrency),
-		wg:       &sync.WaitGroup{},
-		maxPages: maxPages,
-	}
-
-	crawlr.wg.Add(1)
-	go crawlr.crawlPage(rawURL)
-	crawlr.wg.Wait()
+	crawlr := New(baseURL, maxConcurrency, maxPages)
+	crawlr.Run(rawURL)
 
 	fmt.Printf("concurrent crawler: crawled %d urls in %s\n", len(crawlr.pages), time.Since(now))
 	return crawlr.pages, nil
@@ -44,19 +33,14 @@ func main() {
 	var output string
 
 	flag.StringVar(&rawURL, "url", "", "the url to crawl")
-	flag.IntVar(&maxConcurrency, "conn", 4, "max number of concurrent workers")
+	flag.IntVar(&maxConcurrency, "workers", 4, "max number of concurrent workers")
 	flag.IntVar(&maxPages, "pages", 10, "max pages to collect")
-	flag.StringVar(&output, "output", "", "the file name to write the report")
+	flag.StringVar(&output, "output", "output/report.json", "the file name to write the report")
 
 	flag.Parse()
 
 	if rawURL == "" {
 		fmt.Println("URL is not provided")
-		os.Exit(1)
-	}
-
-	if output == "" {
-		fmt.Println("output path is needed")
 		os.Exit(1)
 	}
 
