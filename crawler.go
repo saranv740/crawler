@@ -1,78 +1,125 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
-	"sync"
 )
 
-type config struct {
-	pages    map[string]PageData
-	baseURL  *url.URL
-	mu       *sync.Mutex
-	sema     chan struct{}
-	wg       *sync.WaitGroup
-	maxPages int
+var (
+	externalHostErr = errors.New("external host")
+	urlSanityErr    = errors.New("url sanitizing failed")
+	pageFetchErr    = errors.New("error in fetching page")
+)
+
+type Crawler struct {
+	baseURL    *url.URL
+	maxWorkers int
+	maxPages   int
+	pages      map[string]PageData
+	result     chan crawlResult
+	links      chan string
 }
 
-func (c *config) crawlPage(rawCurrentURL string) {
-	// Aquire semaphore lock
-	c.sema <- struct{}{}
-	defer func() {
-		// Release the lock
-		<-c.sema
-		c.wg.Done()
-	}()
+type crawlResult struct {
+	URL         string
+	Data        PageData
+	NewLinks    []string
+	Err         error
+	ParseErrors []error
+}
 
-	currentURL, err := url.Parse(rawCurrentURL)
-	if err != nil || currentURL.Host != c.baseURL.Host {
-		return
+func New(baseURL *url.URL, maxWorkers int, maxPages int) *Crawler {
+	return &Crawler{
+		baseURL:    baseURL,
+		maxPages:   maxPages,
+		maxWorkers: maxWorkers,
+		pages:      make(map[string]PageData),
+		// keep result small so workers will block
+		result: make(chan crawlResult, 1),
+		// keep links to maximum number for pages
+		links: make(chan string, maxPages+1),
+	}
+}
+
+func (c *Crawler) Run(rawStartURL string) {
+	// start workers
+	for i := range c.maxWorkers {
+		go c.worker(i)
 	}
 
-	normalizedCurrent, err := normalizeURL(rawCurrentURL)
-	if err != nil {
-		return
+	c.links <- rawStartURL
+	activeLinks := 1
+
+	for activeLinks > 0 {
+		select {
+		case result := <-c.result:
+			activeLinks--
+			if result.Err != nil {
+				delete(c.pages, result.URL)
+				continue
+			}
+
+			if len(result.ParseErrors) != 0 {
+				fmt.Printf("encountered some parsing errors %v\n", result.ParseErrors)
+			}
+
+			c.pages[result.URL] = result.Data
+
+			for _, link := range result.NewLinks {
+				normalized, err := normalizeURL(link)
+				if err != nil {
+					// Skip completely broken URLs
+					continue
+				}
+
+				if len(c.pages) >= c.maxPages {
+					continue
+				}
+
+				if _, exists := c.pages[normalized]; !exists {
+					activeLinks++
+					// mark as done in advance so the link won't be processed again
+					c.pages[normalized] = PageData{}
+					c.links <- link
+				}
+			}
+		}
 	}
 
-	c.mu.Lock()
-	if len(c.pages) >= c.maxPages {
-		c.mu.Unlock()
-		return
-	}
-	// If it already exists return
-	if _, exists := c.pages[normalizedCurrent]; exists {
-		c.mu.Unlock()
-		return
-	}
-	// set current page as extracted
-	c.pages[normalizedCurrent] = PageData{}
-	c.mu.Unlock()
+	close(c.links)
+}
 
-	html, err := getHTML(rawCurrentURL)
-	if err != nil {
-		return
-	}
+func (c *Crawler) worker(id int) {
+	for link := range c.links {
+		normalized, err := normalizeURL(link)
+		if err != nil {
+			c.result <- crawlResult{URL: link, Err: urlSanityErr}
+			continue
+		}
 
-	pageData, errs := extractPageData(html, currentURL.String(), c.baseURL)
-	if len(errs) > 0 {
-		fmt.Println("found some errors: ", errs)
-	}
+		currentURL, err := url.Parse(link)
+		if err != nil {
+			c.result <- crawlResult{URL: normalized, Err: urlSanityErr}
+			continue
+		}
+		if currentURL.Host != c.baseURL.Host {
+			c.result <- crawlResult{URL: normalized, Err: externalHostErr}
+			continue
+		}
 
-	c.mu.Lock()
-	c.pages[normalizedCurrent] = pageData
-	c.mu.Unlock()
+		html, err := getHTML(currentURL.String())
+		if err != nil {
+			c.result <- crawlResult{URL: normalized, Err: pageFetchErr}
+			continue
+		}
 
-	for _, link := range pageData.OutgoingLinks {
-		c.wg.Add(1)
-		go func(l string) {
-			c.crawlPage(l)
-		}(link)
-	}
-
-	for _, link := range pageData.ImageURLs {
-		c.wg.Add(1)
-		go func(l string) {
-			c.crawlPage(l)
-		}(link)
+		data, errs := extractPageData(html, normalized, c.baseURL)
+		c.result <- crawlResult{
+			URL:         normalized,
+			ParseErrors: errs,
+			Data:        data,
+			NewLinks:    append(data.OutgoingLinks, data.ImageURLs...),
+		}
 	}
 }
