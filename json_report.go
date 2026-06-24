@@ -6,17 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/saranv740/crawler/internal/crawler"
 )
 
 // writeJSONReport sorts the data based on keys and writes to the provided filePath
-func writeJSONReport(pages map[string]PageData, pathToWrite string) error {
+func writeJSONReport(pages map[string]crawler.PageData, pathToWrite string) error {
 	keys := make([]string, 0, len(pages))
 	for k := range pages {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
 
-	sorted := make([]PageData, 0, len(pages))
+	sorted := make([]crawler.PageData, 0, len(pages))
 	for _, k := range keys {
 		sorted = append(sorted, pages[k])
 	}

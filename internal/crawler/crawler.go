@@ -1,15 +1,9 @@
-package main
+package crawler
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
-)
-
-var (
-	externalHostErr = errors.New("external host")
-	urlSanityErr    = errors.New("url sanitizing failed")
-	pageFetchErr    = errors.New("error in fetching page")
+	"sync"
 )
 
 type Crawler struct {
@@ -42,10 +36,21 @@ func New(baseURL *url.URL, maxWorkers int, maxPages int) *Crawler {
 	}
 }
 
+func (c *Crawler) Pages() map[string]PageData {
+	return c.pages
+}
+
 func (c *Crawler) Run(rawStartURL string) {
+	var wg sync.WaitGroup
+
 	// start workers
 	for i := range c.maxWorkers {
-		go c.worker(i)
+		wg.Add(1)
+
+		go func(id int) {
+			defer wg.Done()
+			c.worker(id)
+		}(i)
 	}
 
 	c.links <- rawStartURL
@@ -88,29 +93,30 @@ func (c *Crawler) Run(rawStartURL string) {
 	}
 
 	close(c.links)
+	wg.Wait()
 }
 
 func (c *Crawler) worker(id int) {
 	for link := range c.links {
 		normalized, err := normalizeURL(link)
 		if err != nil {
-			c.result <- crawlResult{URL: link, Err: urlSanityErr}
+			c.result <- crawlResult{URL: link, Err: URLSanityErr}
 			continue
 		}
 
 		currentURL, err := url.Parse(link)
 		if err != nil {
-			c.result <- crawlResult{URL: normalized, Err: urlSanityErr}
+			c.result <- crawlResult{URL: normalized, Err: URLSanityErr}
 			continue
 		}
 		if currentURL.Host != c.baseURL.Host {
-			c.result <- crawlResult{URL: normalized, Err: externalHostErr}
+			c.result <- crawlResult{URL: normalized, Err: ExternalHostErr}
 			continue
 		}
 
 		html, err := getHTML(currentURL.String())
 		if err != nil {
-			c.result <- crawlResult{URL: normalized, Err: pageFetchErr}
+			c.result <- crawlResult{URL: normalized, Err: PageFetchErr}
 			continue
 		}
 
