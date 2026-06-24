@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 )
 
 var (
@@ -43,9 +44,16 @@ func New(baseURL *url.URL, maxWorkers int, maxPages int) *Crawler {
 }
 
 func (c *Crawler) Run(rawStartURL string) {
+	var wg sync.WaitGroup
+
 	// start workers
 	for i := range c.maxWorkers {
-		go c.worker(i)
+		wg.Add(1)
+
+		go func(id int) {
+			defer wg.Done()
+			c.worker(id)
+		}(i)
 	}
 
 	c.links <- rawStartURL
@@ -88,6 +96,7 @@ func (c *Crawler) Run(rawStartURL string) {
 	}
 
 	close(c.links)
+	wg.Wait()
 }
 
 func (c *Crawler) worker(id int) {
