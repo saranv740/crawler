@@ -7,23 +7,25 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/saranv740/crawler/internal/crawler"
 )
 
 // start will begin to crawl base url with single goroutine, further pages will be extracted by their own goroutines
-func start(rawURL string, maxConcurrency int, maxPages int) (map[string]PageData, error) {
+func start(rawURL string, maxConcurrency int, maxPages int) (map[string]crawler.PageData, error) {
 	now := time.Now()
-	pages := make(map[string]PageData)
+	pages := make(map[string]crawler.PageData)
 
 	baseURL, err := url.Parse(strings.TrimSuffix(rawURL, "/"))
 	if err != nil {
 		return pages, fmt.Errorf("error in parsing URL")
 	}
 
-	crawlr := New(baseURL, maxConcurrency, maxPages)
+	crawlr := crawler.New(baseURL, maxConcurrency, maxPages)
 	crawlr.Run(rawURL)
 
-	fmt.Printf("concurrent crawler: crawled %d urls in %s\n", len(crawlr.pages), time.Since(now))
-	return crawlr.pages, nil
+	fmt.Printf("concurrent crawler: crawled %d urls in %s\n", len(crawlr.Pages()), time.Since(now))
+	return crawlr.Pages(), nil
 }
 
 func main() {

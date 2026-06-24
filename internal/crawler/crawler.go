@@ -1,16 +1,9 @@
-package main
+package crawler
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"sync"
-)
-
-var (
-	externalHostErr = errors.New("external host")
-	urlSanityErr    = errors.New("url sanitizing failed")
-	pageFetchErr    = errors.New("error in fetching page")
 )
 
 type Crawler struct {
@@ -41,6 +34,10 @@ func New(baseURL *url.URL, maxWorkers int, maxPages int) *Crawler {
 		// keep links to maximum number for pages
 		links: make(chan string, maxPages+1),
 	}
+}
+
+func (c *Crawler) Pages() map[string]PageData {
+	return c.pages
 }
 
 func (c *Crawler) Run(rawStartURL string) {
@@ -103,23 +100,23 @@ func (c *Crawler) worker(id int) {
 	for link := range c.links {
 		normalized, err := normalizeURL(link)
 		if err != nil {
-			c.result <- crawlResult{URL: link, Err: urlSanityErr}
+			c.result <- crawlResult{URL: link, Err: URLSanityErr}
 			continue
 		}
 
 		currentURL, err := url.Parse(link)
 		if err != nil {
-			c.result <- crawlResult{URL: normalized, Err: urlSanityErr}
+			c.result <- crawlResult{URL: normalized, Err: URLSanityErr}
 			continue
 		}
 		if currentURL.Host != c.baseURL.Host {
-			c.result <- crawlResult{URL: normalized, Err: externalHostErr}
+			c.result <- crawlResult{URL: normalized, Err: ExternalHostErr}
 			continue
 		}
 
 		html, err := getHTML(currentURL.String())
 		if err != nil {
-			c.result <- crawlResult{URL: normalized, Err: pageFetchErr}
+			c.result <- crawlResult{URL: normalized, Err: PageFetchErr}
 			continue
 		}
 

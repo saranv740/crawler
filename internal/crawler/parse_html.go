@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"fmt"
@@ -9,6 +9,14 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+type PageData struct {
+	URL            string   `json:"url"`
+	Heading        string   `json:"heading"`
+	FirstParagraph string   `json:"first_paragraph"`
+	OutgoingLinks  []string `json:"outgoing_links"`
+	ImageURLs      []string `json:"image_urls"`
+}
 
 func getHeadingFromHTML(doc *goquery.Document) string {
 	node := doc.Find("h1")
@@ -60,14 +68,6 @@ func getLinksFromImages(doc *goquery.Document, baseURL *url.URL) ([]string, erro
 	})
 
 	return result, nil
-}
-
-type PageData struct {
-	URL            string   `json:"url"`
-	Heading        string   `json:"heading"`
-	FirstParagraph string   `json:"first_paragraph"`
-	OutgoingLinks  []string `json:"outgoing_links"`
-	ImageURLs      []string `json:"image_urls"`
 }
 
 func extractPageData(rawHTML string, currentURL string, baseURL *url.URL) (PageData, []error) {
